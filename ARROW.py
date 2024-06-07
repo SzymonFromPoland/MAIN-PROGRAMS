@@ -23,10 +23,11 @@ mRamp = MediumMotor(OUTPUT_D)
 
 distMid = 0
 direction = 1  # -1 -> LEFT | 1 -> RIGHT
+angle = 0
 
 MAX_DIST = 97
-counter = 8
-speed = 40
+counter = 6
+speed = 45
 
 
 ### MISS CHECK ###
@@ -48,11 +49,9 @@ check = Thread(target=check_if_missed)
 
 ### SLOW DOWN ###
 
-toggle = True
 
-def slow_down(strength, nothing):
+def slow_down(strength, toggle):
     global speed
-    global toggle
 
     if toggle:
         toggle = False
@@ -63,7 +62,7 @@ def slow_down(strength, nothing):
 
         toggle = True
 
-slow = Thread(target=slow_down, args=(speed / 2, 1))
+slow = Thread(target=slow_down, args=(speed / 2, True))
 
 ### RAMP ###
 
@@ -75,21 +74,75 @@ def when_stuck():
         sleep(0.6)
         if abs(gyro.rate) < 5 and distMid > MAX_DIST:
             mRamp.on_for_degrees(100, -15, brake = True)
+            sleep(0.05)
             mRamp.on_for_degrees(100, 15, brake = False)
 
 stuck = Thread(target=when_stuck)
 
 def ramp():
-    mRamp.on_for_degrees(100, 90, brake=False)
+    mRamp.on_for_degrees(100, 90, brake=True)
+    mRamp.off(brake=False)
 
 
 ramp_down = Thread(target=ramp)
 
+### GOTO ANGLE ###
+
+def goto(angle):
+    global distMid
+    global counter
+
+    if angle < 0 and angle != -1: # right
+        ramp_down.start()
+        direction = -1
+        while gyro.angle > angle:
+            if distMid < MAX_DIST:
+                if counter <= 0:
+                    break
+                counter -= 1
+            mRight.on(-90)
+            mLeft.on(90)
+
+    elif angle > 0 and angle != -1: # left
+        ramp_down.start()
+        direction = 1
+        while gyro.angle < angle:
+            if distMid < MAX_DIST:
+                if counter <= 0:
+                    break
+                counter -= 1
+            mRight.on(90)
+            mLeft.on(-90)
+    elif angle == 0:
+        ramp_down.start()
+        sleep(0.2)
+
+    elif angle == -1:
+        mRight.on(100)
+        mMid.on(100)
+        mLeft.on(100)
+        ramp_down.start()
+        sleep(0.3)
+
+
+
+    gyro.mode = 'GYRO-RATE'
+
+    if angle != 0:
+        mRight.off(brake=True)
+        mLeft.off(brake=True)
+        sleep(0.04)
+
 ### TRACKING ###
 
-def tracking():
+def mid():
+    global distMid
+    while True:
+        distMid = irMid.proximity
 
-    ramp_down.start()
+prox = Thread(target=mid)
+
+def tracking():
     check.start()
     stuck.start()
 
@@ -98,8 +151,6 @@ def tracking():
         global direction
         global speed
         global counter
-
-        distMid = irMid.proximity
 
         if distMid < MAX_DIST:
             if counter <= 0:
@@ -118,38 +169,59 @@ def tracking():
             mMid.on(0)
             mLeft.on(-speed)
 
-    print("Stoped")
+    print("Stopped")
 
 ### MAIN ###
 
 leds.set_color('LEFT', (1, 0))
 leds.set_color('RIGHT', (1, 0))
 
-while True:
-    btn.process()
+while not btn.enter:
+    btn.process()   
+
     if btn.up:
-        print("Started")
-        direction = -1
-        break
+        angle = angle - 5
+        print(angle)
+        while btn.up:
+            sleep(0.00001)
+
     if btn.down:
-        print("Started")
-        direction = 1
-        break
+        angle = angle + 5
+        print(angle)
+        while btn.down:
+            sleep(0.00001)
+
     if btn.right:
         leds.set_color('LEFT', (1, 1))
         leds.set_color('RIGHT', (1, 1))
         print("Calibrating...")
+
         gyro.reset()
         gyro.calibrate()
+
         print("Done")
         leds.set_color('LEFT', (1, 0))
         leds.set_color('RIGHT', (1, 0))
+
+    if btn.left:
+        angle = -1
+        print("Reverse then go")
+        while btn.left:
+            sleep(0.00001)
+
+print("Started")
 
 leds.set_color('LEFT', (0 , 1))
 leds.set_color('RIGHT', (0 , 1))
 
 irMid.mode = 'IR-PROX'
 
-sleep(4.9)
+gyro.mode = 'GYRO-ANG'
+gyro.reset()
 
+sleep(4.88)
+
+prox.start()
+
+goto(angle)
 tracking()
