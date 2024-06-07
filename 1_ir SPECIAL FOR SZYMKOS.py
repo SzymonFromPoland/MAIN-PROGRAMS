@@ -94,18 +94,30 @@ def when_stuck():
 stuck = Thread(target=when_stuck)
 
 
-def ramp():
-    mRamp.on_for_degrees(100, 90, brake=False)
+def ramp(down, nothing):
+    global distMid
+    if down:
+        mRamp.on_for_degrees(100, 90, brake=False)
+    elif not down:
+        sleep(0.25)
+        while True:
+            if distMid < 40:
+                mRamp.on_for_degrees(100, -40, brake=True)
+                sleep(10)
+                mRamp.off(brake = False)
+                break
 
-ramp_down = Thread(target=ramp)
 
+ramp_down = Thread(target=ramp, args=(True, 1))
+ramp_up = Thread(target=ramp, args=(False, 1))
 ### TRACKING ###
 
 def tracking():
 
     ramp_down.start()
     check.start()
-    stuck.start()
+    ramp_up.start()
+    # stuck.start()
     while True:
         global distMid
         global direction
